@@ -1,51 +1,70 @@
 <!DOCTYPE html>
-<html lang="fa" dir="ltr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ontario Grid Feed</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
-  :root { --bg:#0f1115; --card:#181b22; --ink:#e8eaf0; --muted:#8b93a7; --accent:#4fd1c5; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink); }
-  header { padding:24px 28px 8px; }
-  h1 { margin:0 0 4px; font-size:24px; }
-  .sub { color:var(--muted); font-size:14px; }
-  .kpis { display:flex; gap:12px; flex-wrap:wrap; padding:12px 28px; }
-  .kpi { background:var(--card); border-radius:14px; padding:14px 18px; min-width:160px; }
-  .kpi b { display:block; font-size:22px; color:var(--accent); }
-  .kpi span { color:var(--muted); font-size:13px; }
-  /* Pinterest-style masonry */
-  .grid { column-width: 380px; column-gap: 16px; padding: 12px 28px 40px; }
-  .card { break-inside: avoid; background:var(--card); border-radius:16px; padding:16px; margin-bottom:16px; }
-  .card h2 { font-size:16px; margin:0 0 4px; }
-  .card p { color:var(--muted); font-size:13px; margin:0 0 8px; line-height:1.5; }
-  .plot { width:100%; height:300px; }
-  .plot.tall { height:420px; }
-  .empty { padding:40px; color:var(--muted); }
+  :root{--line:#1d2a40;--ink:#e6edf7;--muted:#7d8ba5;--cyan:#22d3ee}
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);font-family:Inter,system-ui,sans-serif;min-height:100vh;
+       background:radial-gradient(1100px 620px at 8% -12%,#17306e 0%,transparent 60%),
+                  radial-gradient(900px 500px at 100% 0%,#3a1a63 0%,transparent 55%),#070b14}
+  header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:24px 28px 8px}
+  h1{margin:0;font-size:24px}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  select{background:#0f1726;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;padding:8px 28px}
+  .kpi{background:linear-gradient(180deg,#121c31,#0c1424);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:0 0 30px rgba(34,211,238,.07)}
+  .kpi b{display:block;font-size:24px;color:var(--cyan);text-shadow:0 0 18px rgba(34,211,238,.45)}
+  .kpi span{color:var(--muted);font-size:12px}
+  .grid{column-width:380px;column-gap:16px;padding:16px 28px 40px}
+  .card{break-inside:avoid;background:linear-gradient(180deg,#101a2d,#0b1322);border:1px solid var(--line);
+        border-radius:18px;padding:16px;margin-bottom:16px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  .card h2{font-size:15px;margin:0 0 4px}
+  .card p{color:var(--muted);font-size:12.5px;margin:0 0 10px;line-height:1.5}
+  .plot{width:100%;height:280px}
+  .plot.tall{height:400px}
+  .gauges{display:flex;gap:10px;justify-content:space-around;flex-wrap:wrap}
+  .gauge{text-align:center;font-size:12px;color:var(--muted);width:110px}
+  .ring{width:100px;height:100px;border-radius:50%;margin:0 auto 6px;display:grid;place-items:center;position:relative}
+  .ring::after{content:"";position:absolute;inset:11px;border-radius:50%;background:#0c1424}
+  .ring b{position:relative;z-index:1;font-size:17px}
+  .slider{width:100%;accent-color:var(--cyan);margin:4px 0 6px}
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px;margin-top:6px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .empty{padding:40px;color:var(--muted)}
 </style>
 </head>
 <body>
 <header>
-  <h1>Ontario grid, day by day</h1>
-  <div class="sub" id="meta">Loading data…</div>
+  <div>
+    <h1>Ontario grid, day by day</h1>
+    <div class="sub" id="meta">Loading data…</div>
+  </div>
+  <select id="daySel" aria-label="Choose day"></select>
 </header>
 
 <div class="kpis" id="kpis"></div>
-
 <main class="grid" id="grid"></main>
 
 <script>
 const FUELS = ["nuclear","gas","hydro","wind","solar","biofuel","other"];
-const COLORS = {nuclear:"#7c6cf0", gas:"#e76f51", hydro:"#2a9d8f", wind:"#8ecae6",
-                solar:"#f4d35e", biofuel:"#90be6d", other:"#bbbbbb", demand:"#ffffff"};
-
-const PLOT_LAYOUT = {
+const COL = {nuclear:"#a78bfa", gas:"#f97316", hydro:"#22d3ee", wind:"#93c5fd",
+             solar:"#fbbf24", biofuel:"#a3e635", other:"#94a3b8", demand:"#f8fafc"};
+const LAY = {
   paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
-  font:{color:"#e8eaf0"}, margin:{l:50,r:20,t:10,b:40},
-  legend:{orientation:"h", y:-0.2}
+  font:{color:"#cbd5e1", size:11}, margin:{l:48,r:16,t:8,b:40},
+  legend:{orientation:"h", y:-0.22},
+  xaxis:{gridcolor:"#1d2a40", zerolinecolor:"#1d2a40"},
+  yaxis:{gridcolor:"#1d2a40", zerolinecolor:"#1d2a40"}
 };
+const CFG = {displayModeBar:false, responsive:true};
+let DAYS = [];
+
+const sum = arr => arr.reduce((a,b)=>a+b, 0);
+const fmt = n => Math.round(n).toLocaleString("en-US");
 
 function el(tag, cls, html) {
   const e = document.createElement(tag);
@@ -54,110 +73,206 @@ function el(tag, cls, html) {
   return e;
 }
 
-function card(title, desc, tall=false) {
+function card(title, desc, tall) {
   const c = el("section", "card");
-  c.appendChild(el("h2", null, title));
-  c.appendChild(el("p", null, desc));
-  const p = el("div", "plot" + (tall ? " tall" : ""));
-  c.appendChild(p);
+  c.append(el("h2", null, title), el("p", null, desc));
+  const body = el("div", tall ? "plot tall" : "plot");
+  c.appendChild(body);
   document.getElementById("grid").appendChild(c);
-  return p;
+  return body;
 }
 
-function renderKpis(latest) {
+function renderKpis(d) {
+  const gen = sum(FUELS.map(f => sum(d.gen[f])));
+  const vre = sum(d.gen.wind) + sum(d.gen.solar);
   const items = [
-    [latest.date, "latest day"],
-    [latest.peak_demand_mw.toLocaleString() + " MW", "peak demand"],
-    [latest.min_net_load_mw.toLocaleString() + " MW", "min net load (demand − wind − solar)"],
-    [latest.max_hourly_ramp_mw.toLocaleString() + " MW", "largest 1-hour net-load rise"],
-    [(latest.gas_share*100).toFixed(1) + " %", "gas share of generation"],
+    [d.date, "selected day"],
+    [fmt(d.peak_demand_mw) + " MW", "peak demand"],
+    [fmt(d.min_net_load_mw) + " MW", "lowest net load"],
+    [fmt(d.max_hourly_ramp_mw) + " MW", "largest 1-hour net-load rise"],
+    [((vre / gen) * 100).toFixed(1) + " %", "wind + solar share"],
   ];
   const k = document.getElementById("kpis");
-  items.forEach(([v,l]) => k.appendChild(el("div","kpi",`<b>${v}</b><span>${l}</span>`)));
+  k.innerHTML = "";
+  items.forEach(([v, l]) => k.appendChild(el("div", "kpi", `<b>${v}</b><span>${l}</span>`)));
 }
 
-function renderStackedGeneration(day) {
+function renderGauges(d) {
+  const gen = sum(FUELS.map(f => sum(d.gen[f])));
+  const share = f => sum(d.gen[f]) / gen;
+  const rings = [
+    ["gas", share("gas"), COL.gas],
+    ["nuclear", share("nuclear"), COL.nuclear],
+    ["hydro", share("hydro"), COL.hydro],
+    ["wind + solar", share("wind") + share("solar"), COL.solar],
+  ];
+  const body = card("Share of generation, " + d.date,
+    "How much of the day's power came from each source.", false);
+  body.classList.remove("plot");
+  body.style.height = "auto";
+  const wrap = el("div", "gauges");
+  rings.forEach(([name, s, color]) => {
+    const pct = (s * 100);
+    const ring = el("div", "ring");
+    ring.style.background = `conic-gradient(${color} ${pct}%, #1d2a40 0)`;
+    ring.innerHTML = `<b>${pct.toFixed(1)}%</b>`;
+    const g = el("div", "gauge");
+    g.appendChild(ring);
+    g.appendChild(document.createTextNode(name));
+    wrap.appendChild(g);
+  });
+  body.appendChild(wrap);
+}
+
+function renderFlow(d) {
+  const body = card("Power flow, hour by hour",
+    "Drag the slider. Line width = output. Left: sources, centre: Ontario grid, right: demand.", false);
+  body.classList.remove("plot");
+  body.style.height = "auto";
+  const slider = el("input", "slider");
+  slider.type = "range"; slider.min = 0; slider.max = d.hours.length - 1;
+  slider.value = d.hours.length - 1;
+  const info = el("div", "sub");
+  const svgWrap = el("div");
+  const legend = el("div", "legend");
+  body.append(slider, info, svgWrap, legend);
+
+  const draw = () => {
+    const i = +slider.value;
+    const vals = FUELS.map(f => d.gen[f][i] || 0);
+    const demand = d.demand[i];
+    const maxV = Math.max(...vals, 1);
+    info.textContent = `hour ending ${d.hours[i]} · demand ${fmt(demand)} MW`;
+
+    const W = 420, H = 330, cx = 210, cy = 165, R = 44, dx = 360;
+    let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">`;
+    FUELS.forEach((f, k) => {
+      const y = 22 + k * (H - 44) / (FUELS.length - 1);
+      const w = 1 + 10 * vals[k] / maxV;
+      s += `<path d="M70 ${y} C 120 ${y}, 140 ${cy}, ${cx - R} ${cy}" fill="none"
+             stroke="${COL[f]}" stroke-opacity=".75" stroke-width="${w.toFixed(1)}" stroke-linecap="round"/>`;
+      s += `<circle cx="60" cy="${y}" r="7" fill="${COL[f]}" style="filter:drop-shadow(0 0 6px ${COL[f]})"/>`;
+      s += `<text x="72" y="${y + 3}" fill="#94a3b8" font-size="9">${f}</text>`;
+    });
+    const wD = 1 + 10 * demand / maxV;
+    s += `<path d="M${cx + R} ${cy} L ${dx - 40} ${cy}" stroke="#f8fafc" stroke-opacity=".8"
+           stroke-width="${wD.toFixed(1)}" stroke-linecap="round"/>`;
+    s += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#0c1424" stroke="#22d3ee" stroke-width="3"
+           style="filter:drop-shadow(0 0 10px rgba(34,211,238,.6))"/>`;
+    s += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#e6edf7" font-size="12">Ontario</text>`;
+    s += `<text x="${cx}" y="${cy + 12}" text-anchor="middle" fill="#7d8ba5" font-size="10">grid</text>`;
+    s += `<circle cx="${dx}" cy="${cy}" r="40" fill="#0c1424" stroke="#f8fafc" stroke-width="2"/>`;
+    s += `<text x="${dx}" y="${cy - 2}" text-anchor="middle" fill="#e6edf7" font-size="11">${fmt(demand)}</text>`;
+    s += `<text x="${dx}" y="${cy + 12}" text-anchor="middle" fill="#7d8ba5" font-size="10">MW demand</text>`;
+    s += `</svg>`;
+    svgWrap.innerHTML = s;
+
+    legend.innerHTML = FUELS.map((f, k) =>
+      `<div><i style="background:${COL[f]}"></i>${f}: ${fmt(vals[k])} MW</div>`).join("");
+  };
+  slider.addEventListener("input", draw);
+  draw();
+}
+
+function renderStack(d) {
   const traces = FUELS.map(f => ({
-    x: day.hours, y: day.gen[f], name: f, type:"scatter", mode:"lines",
-    stackgroup:"g", line:{width:0.5, color:COLORS[f]}, fillcolor:COLORS[f]
+    x: d.hours, y: d.gen[f], name: f, type: "scatter", mode: "lines",
+    stackgroup: "g", line: {width: 0.5, color: COL[f]}, fillcolor: COL[f]
   }));
-  traces.push({x: day.hours, y: day.demand, name:"demand", type:"scatter",
-               mode:"lines", line:{color:COLORS.demand, width:2, dash:"dot"}});
-  Plotly.newPlot(card("Generation mix, " + day.date,
-    "Hour-ending on the x-axis. The dotted line is Ontario demand."),
-    traces, {...PLOT_LAYOUT, xaxis:{title:"hour ending"}, yaxis:{title:"MW"}}, {displayModeBar:false});
+  traces.push({x: d.hours, y: d.demand, name: "demand", type: "scatter",
+               mode: "lines", line: {color: COL.demand, width: 2, dash: "dot"}});
+  Plotly.newPlot(card("Generation mix, " + d.date,
+    "Hour ending on the x-axis. The dotted line is Ontario demand."),
+    traces, {...LAY, xaxis: {...LAY.xaxis, title: "hour ending"}, yaxis: {...LAY.yaxis, title: "MW"}}, CFG);
 }
 
-function renderDuck(day) {
-  const minIdx = day.net_load.indexOf(Math.min(...day.net_load));
-  Plotly.newPlot(card("Duck curve (net load), " + day.date,
-    "Net load = demand minus wind and solar. The curve dip shows when variable output is highest."),
-    [{x: day.hours, y: day.net_load, type:"scatter", mode:"lines+markers",
-      line:{color:COLORS.solar, width:3}, name:"net load"},
-     {x: day.hours, y: day.demand, type:"scatter", mode:"lines",
-      line:{color:"#666", dash:"dot"}, name:"demand"}],
-    {...PLOT_LAYOUT, xaxis:{title:"hour ending"}, yaxis:{title:"MW"},
-     annotations:[{x: day.hours[minIdx], y: day.net_load[minIdx], text:"lowest net load",
-                   showarrow:true, arrowcolor:"#ccc", font:{color:"#eee"}}]},
-    {displayModeBar:false});
+function renderDuck(d) {
+  const minIdx = d.net_load.indexOf(Math.min(...d.net_load));
+  Plotly.newPlot(card("Duck curve (net load), " + d.date,
+    "Net load = demand minus wind and solar. The dip is when variable output is highest."),
+    [{x: d.hours, y: d.net_load, type: "scatter", mode: "lines+markers", name: "net load",
+      line: {color: COL.solar, width: 3}, fill: "tozeroy", fillcolor: "rgba(251,191,36,.12)"},
+     {x: d.hours, y: d.demand, type: "scatter", mode: "lines", name: "demand",
+      line: {color: "#64748b", dash: "dot"}}],
+    {...LAY, xaxis: {...LAY.xaxis, title: "hour ending"}, yaxis: {...LAY.yaxis, title: "MW"},
+     annotations: [{x: d.hours[minIdx], y: d.net_load[minIdx], text: "lowest net load",
+                    showarrow: true, arrowcolor: "#cbd5e1", font: {color: "#e6edf7"}}]},
+    CFG);
 }
 
-function renderSurface(days) {
-  // rows = days (oldest to newest), columns = hour ending 1..24
-  const z = days.map(d => d.demand);
-  const y = days.map(d => d.date);
-  const x = days[0].hours;
-  Plotly.newPlot(card("3D view: demand over the last " + days.length + " days",
+function renderSurface() {
+  const z = DAYS.map(d => d.demand);
+  const y = DAYS.map(d => d.date);
+  const x = DAYS[0].hours;
+  Plotly.newPlot(card("3D view: demand over " + DAYS.length + " complete days",
     "Drag to rotate. Each ridge is one day; height is Ontario demand in MW."),
-    [{type:"surface", x, y, z, colorscale:"Viridis", showscale:false}],
-    {...PLOT_LAYOUT, height:420, margin:{l:0,r:0,t:0,b:0},
-     scene:{xaxis:{title:"hour ending"}, yaxis:{title:""}, zaxis:{title:"MW"},
-            bgcolor:"rgba(0,0,0,0)"}},
-    {displayModeBar:false}, true);
+    [{type: "surface", x, y, z, colorscale: "Viridis", showscale: false}],
+    {...LAY, height: 400, margin: {l: 0, r: 0, t: 0, b: 0},
+     scene: {xaxis: {title: "hour ending"}, yaxis: {title: ""}, zaxis: {title: "MW"},
+             bgcolor: "rgba(0,0,0,0)"}},
+    CFG);
 }
 
-function renderTrend(days) {
-  const x = days.map(d => d.date);
-  Plotly.newPlot(card("Daily trend: peak demand, gas share and ramp",
-    "One point per day. Use it to spot when gas is carrying more of the load."),
-    [{x, y: days.map(d=>d.peak_demand_mw), name:"peak demand (MW)", type:"scatter", mode:"lines+markers"},
-     {x, y: days.map(d=>d.max_hourly_ramp_mw), name:"max 1h ramp (MW)", type:"scatter", mode:"lines+markers", yaxis:"y2"},
-     {x, y: days.map(d=>d.gas_share*100), name:"gas share (%)", type:"scatter", mode:"lines+markers", yaxis:"y3"}],
-    {...PLOT_LAYOUT,
-     yaxis:{title:"MW"},
-     yaxis2:{overlaying:"y", side:"right", showgrid:false, title:"ramp MW"},
-     yaxis3:{overlaying:"y", side:"right", showgrid:false, position:0.92, title:"%"}},
-    {displayModeBar:false});
+function renderTrend() {
+  const x = DAYS.map(d => d.date);
+  Plotly.newPlot(card("Daily trend: peak, ramp and gas share",
+    "One point per complete day. Use it to spot when gas carries more of the load."),
+    [{x, y: DAYS.map(d => d.peak_demand_mw), name: "peak demand (MW)", type: "scatter", mode: "lines+markers",
+      line: {color: "#22d3ee"}},
+     {x, y: DAYS.map(d => d.max_hourly_ramp_mw), name: "max 1h ramp (MW)", type: "scatter", mode: "lines+markers",
+      line: {color: "#f97316"}, yaxis: "y2"},
+     {x, y: DAYS.map(d => d.gas_share * 100), name: "gas share (%)", type: "scatter", mode: "lines+markers",
+      line: {color: "#a3e635"}, yaxis: "y3"}],
+    {...LAY,
+     yaxis: {...LAY.yaxis, title: "MW"},
+     yaxis2: {overlaying: "y", side: "right", showgrid: false, title: "ramp MW"},
+     yaxis3: {overlaying: "y", side: "right", showgrid: false, position: 0.94, title: "%"}},
+    CFG);
 }
 
 function renderMarketPlaceholder() {
   const c = el("section", "card");
   c.innerHTML = `<h2>Market analysis</h2>
-    <p>Next step: compare Market Demand with Ontario Demand and show the gap by hour. The price series
-    (HOEP / Ontario Energy Price) will go here when it is added to the feed.</p>`;
+    <p>Next step: compare Market Demand with Ontario Demand and show the gap by hour.
+    The price series (HOEP / Ontario Energy Price) will be added here once it is in the feed.</p>`;
   document.getElementById("grid").appendChild(c);
 }
 
-async function main() {
-  const res = await fetch("data/feed.json", {cache:"no-store"});
-  const data = await res.json();
-  const days = data.days;
-  document.getElementById("meta").textContent =
-    `${days.length} days · generated ${data.generated_at} · ${data.source}`;
-  if (!days.length) {
-    document.getElementById("grid").appendChild(el("div","empty","No data yet. Run the feed script."));
-    return;
-  }
-  const latest = days[days.length-1];
-  renderKpis(latest);
-  renderStackedGeneration(latest);
-  renderDuck(latest);
-  renderSurface(days);
-  renderTrend(days);
+function renderAll(d) {
+  document.getElementById("grid").innerHTML = "";
+  renderKpis(d);
+  renderFlow(d);
+  renderGauges(d);
+  renderStack(d);
+  renderDuck(d);
+  renderSurface();
+  renderTrend();
   renderMarketPlaceholder();
 }
+
+async function main() {
+  const res = await fetch("data/feed.json", {cache: "no-store"});
+  if (!res.ok) throw new Error("feed.json not found (HTTP " + res.status + ")");
+  const data = await res.json();
+  DAYS = data.days;
+  document.getElementById("meta").textContent =
+    `${DAYS.length} complete days · generated ${data.generated_at} · ${data.source}`;
+  if (!DAYS.length) {
+    document.getElementById("grid").appendChild(el("div", "empty", "No complete days yet. Run the feed script."));
+    return;
+  }
+  const sel = document.getElementById("daySel");
+  DAYS.slice().reverse().forEach((d, k) => {
+    const opt = el("option", null, d.date);
+    opt.value = DAYS.length - 1 - k;
+    sel.appendChild(opt);
+  });
+  sel.value = DAYS.length - 1;
+  sel.addEventListener("change", () => renderAll(DAYS[+sel.value]));
+  renderAll(DAYS[DAYS.length - 1]);
+}
 main().catch(err => {
-  document.getElementById("meta").textContent = "Could not load data: " + err;
+  document.getElementById("meta").textContent = "Could not load data: " + err.message;
 });
 </script>
 </body>
