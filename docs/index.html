@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fa" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ontario Grid Feed</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --ink:#e8eaf0; --muted:#8b93a7; --accent:#4fd1c5; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:24px 28px 8px; }
+  h1 { margin:0 0 4px; font-size:24px; }
+  .sub { color:var(--muted); font-size:14px; }
+  .kpis { display:flex; gap:12px; flex-wrap:wrap; padding:12px 28px; }
+  .kpi { background:var(--card); border-radius:14px; padding:14px 18px; min-width:160px; }
+  .kpi b { display:block; font-size:22px; color:var(--accent); }
+  .kpi span { color:var(--muted); font-size:13px; }
+  /* Pinterest-style masonry */
+  .grid { column-width: 380px; column-gap: 16px; padding: 12px 28px 40px; }
+  .card { break-inside: avoid; background:var(--card); border-radius:16px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:16px; margin:0 0 4px; }
+  .card p { color:var(--muted); font-size:13px; margin:0 0 8px; line-height:1.5; }
+  .plot { width:100%; height:300px; }
+  .plot.tall { height:420px; }
+  .empty { padding:40px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ontario grid, day by day</h1>
+  <div class="sub" id="meta">Loading data…</div>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<main class="grid" id="grid"></main>
+
+<script>
+const FUELS = ["nuclear","gas","hydro","wind","solar","biofuel","other"];
+const COLORS = {nuclear:"#7c6cf0", gas:"#e76f51", hydro:"#2a9d8f", wind:"#8ecae6",
+                solar:"#f4d35e", biofuel:"#90be6d", other:"#bbbbbb", demand:"#ffffff"};
+
+const PLOT_LAYOUT = {
+  paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
+  font:{color:"#e8eaf0"}, margin:{l:50,r:20,t:10,b:40},
+  legend:{orientation:"h", y:-0.2}
+};
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+function card(title, desc, tall=false) {
+  const c = el("section", "card");
+  c.appendChild(el("h2", null, title));
+  c.appendChild(el("p", null, desc));
+  const p = el("div", "plot" + (tall ? " tall" : ""));
+  c.appendChild(p);
+  document.getElementById("grid").appendChild(c);
+  return p;
+}
+
+function renderKpis(latest) {
+  const items = [
+    [latest.date, "latest day"],
+    [latest.peak_demand_mw.toLocaleString() + " MW", "peak demand"],
+    [latest.min_net_load_mw.toLocaleString() + " MW", "min net load (demand − wind − solar)"],
+    [latest.max_hourly_ramp_mw.toLocaleString() + " MW", "largest 1-hour net-load rise"],
+    [(latest.gas_share*100).toFixed(1) + " %", "gas share of generation"],
+  ];
+  const k = document.getElementById("kpis");
+  items.forEach(([v,l]) => k.appendChild(el("div","kpi",`<b>${v}</b><span>${l}</span>`)));
+}
+
+function renderStackedGeneration(day) {
+  const traces = FUELS.map(f => ({
+    x: day.hours, y: day.gen[f], name: f, type:"scatter", mode:"lines",
+    stackgroup:"g", line:{width:0.5, color:COLORS[f]}, fillcolor:COLORS[f]
+  }));
+  traces.push({x: day.hours, y: day.demand, name:"demand", type:"scatter",
+               mode:"lines", line:{color:COLORS.demand, width:2, dash:"dot"}});
+  Plotly.newPlot(card("Generation mix, " + day.date,
+    "Hour-ending on the x-axis. The dotted line is Ontario demand."),
+    traces, {...PLOT_LAYOUT, xaxis:{title:"hour ending"}, yaxis:{title:"MW"}}, {displayModeBar:false});
+}
+
+function renderDuck(day) {
+  const minIdx = day.net_load.indexOf(Math.min(...day.net_load));
+  Plotly.newPlot(card("Duck curve (net load), " + day.date,
+    "Net load = demand minus wind and solar. The curve dip shows when variable output is highest."),
+    [{x: day.hours, y: day.net_load, type:"scatter", mode:"lines+markers",
+      line:{color:COLORS.solar, width:3}, name:"net load"},
+     {x: day.hours, y: day.demand, type:"scatter", mode:"lines",
+      line:{color:"#666", dash:"dot"}, name:"demand"}],
+    {...PLOT_LAYOUT, xaxis:{title:"hour ending"}, yaxis:{title:"MW"},
+     annotations:[{x: day.hours[minIdx], y: day.net_load[minIdx], text:"lowest net load",
+                   showarrow:true, arrowcolor:"#ccc", font:{color:"#eee"}}]},
+    {displayModeBar:false});
+}
+
+function renderSurface(days) {
+  // rows = days (oldest to newest), columns = hour ending 1..24
+  const z = days.map(d => d.demand);
+  const y = days.map(d => d.date);
+  const x = days[0].hours;
+  Plotly.newPlot(card("3D view: demand over the last " + days.length + " days",
+    "Drag to rotate. Each ridge is one day; height is Ontario demand in MW."),
+    [{type:"surface", x, y, z, colorscale:"Viridis", showscale:false}],
+    {...PLOT_LAYOUT, height:420, margin:{l:0,r:0,t:0,b:0},
+     scene:{xaxis:{title:"hour ending"}, yaxis:{title:""}, zaxis:{title:"MW"},
+            bgcolor:"rgba(0,0,0,0)"}},
+    {displayModeBar:false}, true);
+}
+
+function renderTrend(days) {
+  const x = days.map(d => d.date);
+  Plotly.newPlot(card("Daily trend: peak demand, gas share and ramp",
+    "One point per day. Use it to spot when gas is carrying more of the load."),
+    [{x, y: days.map(d=>d.peak_demand_mw), name:"peak demand (MW)", type:"scatter", mode:"lines+markers"},
+     {x, y: days.map(d=>d.max_hourly_ramp_mw), name:"max 1h ramp (MW)", type:"scatter", mode:"lines+markers", yaxis:"y2"},
+     {x, y: days.map(d=>d.gas_share*100), name:"gas share (%)", type:"scatter", mode:"lines+markers", yaxis:"y3"}],
+    {...PLOT_LAYOUT,
+     yaxis:{title:"MW"},
+     yaxis2:{overlaying:"y", side:"right", showgrid:false, title:"ramp MW"},
+     yaxis3:{overlaying:"y", side:"right", showgrid:false, position:0.92, title:"%"}},
+    {displayModeBar:false});
+}
+
+function renderMarketPlaceholder() {
+  const c = el("section", "card");
+  c.innerHTML = `<h2>Market analysis</h2>
+    <p>Next step: compare Market Demand with Ontario Demand and show the gap by hour. The price series
+    (HOEP / Ontario Energy Price) will go here when it is added to the feed.</p>`;
+  document.getElementById("grid").appendChild(c);
+}
+
+async function main() {
+  const res = await fetch("data/feed.json", {cache:"no-store"});
+  const data = await res.json();
+  const days = data.days;
+  document.getElementById("meta").textContent =
+    `${days.length} days · generated ${data.generated_at} · ${data.source}`;
+  if (!days.length) {
+    document.getElementById("grid").appendChild(el("div","empty","No data yet. Run the feed script."));
+    return;
+  }
+  const latest = days[days.length-1];
+  renderKpis(latest);
+  renderStackedGeneration(latest);
+  renderDuck(latest);
+  renderSurface(days);
+  renderTrend(days);
+  renderMarketPlaceholder();
+}
+main().catch(err => {
+  document.getElementById("meta").textContent = "Could not load data: " + err;
+});
+</script>
+</body>
+</html>
