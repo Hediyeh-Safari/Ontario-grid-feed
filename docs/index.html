@@ -91,6 +91,7 @@ function renderKpis(d) {
     [fmt(d.min_net_load_mw) + " MW", "lowest net load"],
     [fmt(d.max_hourly_ramp_mw) + " MW", "largest 1-hour net-load rise"],
     [((vre / gen) * 100).toFixed(1) + " %", "wind + solar share"],
+    [fmt(d.gap_mean_mw) + " MW", "average Market − Ontario gap"],
   ];
   const k = document.getElementById("kpis");
   k.innerHTML = "";
@@ -174,6 +175,19 @@ function renderFlow(d) {
   draw();
 }
 
+function renderMarket(d) {
+  Plotly.newPlot(card("Market vs Ontario demand, " + d.date,
+    `Largest gap: ${fmt(d.gap_max_mw)} MW at hour ending ${d.gap_max_hour}. The gap definition is still to be confirmed with IESO.`),
+    [{x: d.hours, y: d.market, name: "Market Demand", type: "scatter", mode: "lines",
+      line: {color: "#22d3ee", width: 2}},
+     {x: d.hours, y: d.demand, name: "Ontario Demand", type: "scatter", mode: "lines",
+      line: {color: "#a78bfa", width: 2}},
+     {x: d.hours, y: d.gap, name: "gap (Market − Ontario)", type: "bar",
+      marker: {color: "rgba(251,191,36,.55)"}}],
+    {...LAY, barmode: "overlay", xaxis: {...LAY.xaxis, title: "hour ending"}, yaxis: {...LAY.yaxis, title: "MW"}},
+    CFG);
+}
+
 function renderStack(d) {
   const traces = FUELS.map(f => ({
     x: d.hours, y: d.gen[f], name: f, type: "scatter", mode: "lines",
@@ -230,11 +244,11 @@ function renderTrend() {
     CFG);
 }
 
-function renderMarketPlaceholder() {
+function renderPlaceholder() {
   const c = el("section", "card");
-  c.innerHTML = `<h2>Market analysis</h2>
-    <p>Next step: compare Market Demand with Ontario Demand and show the gap by hour.
-    The price series (HOEP / Ontario Energy Price) will be added here once it is in the feed.</p>`;
+  c.innerHTML = `<h2>Prices (next step)</h2>
+    <p>The hourly Ontario Energy Price (HOEP) will go here, so the gap and the price can be compared
+    in the same chart.</p>`;
   document.getElementById("grid").appendChild(c);
 }
 
@@ -243,11 +257,12 @@ function renderAll(d) {
   renderKpis(d);
   renderFlow(d);
   renderGauges(d);
+  renderMarket(d);
   renderStack(d);
   renderDuck(d);
   renderSurface();
   renderTrend();
-  renderMarketPlaceholder();
+  renderPlaceholder();
 }
 
 async function main() {

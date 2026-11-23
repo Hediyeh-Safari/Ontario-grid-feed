@@ -1,8 +1,8 @@
 """Build docs/data/feed.json from IESO public reports.
 
 Self-contained: does NOT import the ieso_pipeline package.
-Only COMPLETE days are kept (24 hours of demand and fuel data),
-so today's partial day never shows up as a broken chart.
+Only COMPLETE days are kept (24 hours of demand and fuel data).
+Adds Market Demand next to Ontario Demand and the gap between them.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -30,9 +31,17 @@ VARIABLE = ["wind", "solar"]
 
 
 def get(url: str) -> str:
-    r = requests.get(url, timeout=TIMEOUT)
-    r.raise_for_status()
-    return r.text
+    """Download a URL, retrying a few times if IESO closes the connection."""
+    last_error = None
+    for attempt in range(4):
+        try:
+            r = requests.get(url, timeout=TIMEOUT)
+            r.raise_for_status()
+            return r.text
+        except requests.exceptions.RequestException as err:
+            last_error = err
+            time.sleep(10 * (attempt + 1))
+    raise last_error
 
 
 def latest_file(listing_url: str, prefix: str, year: int, ext: str) -> str:
@@ -50,10 +59,11 @@ def parse_demand(text: str) -> pd.DataFrame:
     start = next(i for i, line in enumerate(lines) if line.strip().startswith("Date,"))
     df = pd.read_csv(io.StringIO("\n".join(lines[start:])))
     df.columns = [c.strip() for c in df.columns]
-    df = df[["Date", "Hour", "Ontario Demand"]].dropna()
+    df = df[["Date", "Hour", "Market Demand", "Ontario Demand"]].dropna()
     return pd.DataFrame({
         "date": pd.to_datetime(df["Date"]).dt.date,
         "hour": df["Hour"].astype(int),
+        "market": df["Market Demand"].astype(float),
         "demand": df["Ontario Demand"].astype(float),
     })
 
@@ -115,7 +125,8 @@ def build_day(day: dt.date, wide: pd.DataFrame) -> dict | None:
     rows = wide[wide["date"] == day].copy()
     if len(rows) < 24:
         return None  # day still running, or hours missing
-    if rows["demand"].isna().any() or "gas" not in rows or rows["gas"].isna().any():
+    if (rows["demand"].isna().any() or rows["market"].isna().any()
+            or "gas" not in rows or rows["gas"].isna().any()):
         return None  # demand or fuel data not published yet
     for col in FUELS:
         if col not in rows:
@@ -124,10 +135,16 @@ def build_day(day: dt.date, wide: pd.DataFrame) -> dict | None:
     net = rows["demand"] - rows[VARIABLE].sum(axis=1)
     ramp = net.diff().dropna()
     gen_total = rows[FUELS].sum(axis=1).sum()
+    gap = rows["market"] - rows["demand"]
     return {
         "date": day.isoformat(),
         "hours": [int(h) for h in rows["hour"]],
         "demand": [round(float(v), 1) for v in rows["demand"]],
+        "market": [round(float(v), 1) for v in rows["market"]],
+        "gap": [round(float(v), 1) for v in gap],
+        "gap_mean_mw": round(float(gap.mean()), 1),
+        "gap_max_mw": round(float(gap.max()), 1),
+        "gap_max_hour": int(rows["hour"].iloc[int(gap.to_numpy().argmax())]),
         "net_load": [round(float(v), 1) for v in net],
         "gen": {f: [round(float(v), 1) for v in rows[f]] for f in FUELS},
         "peak_demand_mw": round(float(rows["demand"].max()), 1),
@@ -149,8 +166,8 @@ def main() -> None:
     days.reverse()  # oldest first, newest last
     payload = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-        "source": "IESO public reports (Ontario Demand, Generator Output by Fuel)",
-        "note": "Only complete days (24 hours). Net load = demand minus wind and solar. Market analysis is not yet based on Market Demand.",
+        "source": "IESO public reports (Market Demand, Ontario Demand, Generator Output by Fuel)",
+        "note": "Only complete days (24 hours). Gap = Market Demand minus Ontario Demand; its IESO definition is still to be confirmed. Net load = demand minus wind and solar.",
         "days": days,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
