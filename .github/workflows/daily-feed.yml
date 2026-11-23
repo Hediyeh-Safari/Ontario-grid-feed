@@ -1,0 +1,35 @@
+name: daily-feed
+
+on:
+  schedule:
+    - cron: "30 15 * * *"   # every day, 15:30 UTC
+  workflow_dispatch:          # allows a manual run from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Build feed from IESO
+        run: python scripts/build_feed.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name "daily-feed-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add docs/data/feed.json
+          git diff --cached --quiet || git commit -m "Update daily feed"
+          git push
