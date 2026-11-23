@@ -1,7 +1,8 @@
 """Build docs/data/feed.json from IESO public reports.
 
-This file is self-contained: it does NOT import the ieso_pipeline package,
-so it works even if the src folder in the repo is out of date.
+Self-contained: does NOT import the ieso_pipeline package.
+Only COMPLETE days are kept (24 hours of demand and fuel data),
+so today's partial day never shows up as a broken chart.
 """
 from __future__ import annotations
 
@@ -112,8 +113,10 @@ def load_wide(today: dt.date) -> pd.DataFrame:
 
 def build_day(day: dt.date, wide: pd.DataFrame) -> dict | None:
     rows = wide[wide["date"] == day].copy()
-    if rows.empty:
-        return None
+    if len(rows) < 24:
+        return None  # day still running, or hours missing
+    if rows["demand"].isna().any() or "gas" not in rows or rows["gas"].isna().any():
+        return None  # demand or fuel data not published yet
     for col in FUELS:
         if col not in rows:
             rows[col] = 0.0
@@ -136,17 +139,23 @@ def build_day(day: dt.date, wide: pd.DataFrame) -> dict | None:
 
 def main() -> None:
     wide = load_wide(dt.date.today())
-    days_list = sorted(wide["date"].unique())[-DAYS:]
-    days = [r for r in (build_day(d, wide) for d in days_list) if r]
+    days = []
+    for d in sorted(wide["date"].unique(), reverse=True):
+        rec = build_day(d, wide)
+        if rec:
+            days.append(rec)
+        if len(days) >= DAYS:
+            break
+    days.reverse()  # oldest first, newest last
     payload = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "source": "IESO public reports (Ontario Demand, Generator Output by Fuel)",
-        "note": "Net load = demand minus wind and solar. Market analysis cards are not yet based on Market Demand.",
+        "note": "Only complete days (24 hours). Net load = demand minus wind and solar. Market analysis is not yet based on Market Demand.",
         "days": days,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, ensure_ascii=False, allow_nan=False), encoding="utf-8")
-    print(f"wrote {len(days)} days to {OUT}")
+    print(f"wrote {len(days)} complete days to {OUT}")
 
 
 if __name__ == "__main__":
